@@ -49,6 +49,14 @@ spec:
       spec:
         imagePullSecrets:
         - name: nvcr-secret
+        # B200 GPU nodes carry the taint nvidia.com/gpu=true:NoSchedule. Without a
+        # matching toleration the pods never schedule and the DynamoGraphDeployment
+        # reports insufficient_capacity even when GPUs are free.
+        tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: 'true'
+          effect: NoSchedule
         containers:
         - name: main
           image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
@@ -109,6 +117,14 @@ spec:
       spec:
         imagePullSecrets:
         - name: nvcr-secret
+        # B200 GPU nodes carry the taint nvidia.com/gpu=true:NoSchedule. Without a
+        # matching toleration the pods never schedule and the DynamoGraphDeployment
+        # reports insufficient_capacity even when GPUs are free.
+        tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: 'true'
+          effect: NoSchedule
         containers:
         - name: main
           image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3

@@ -67,6 +67,11 @@ spec:
     spec:
       restartPolicy: Never
 
+      # The AIPerf image lives in the private nvstaging registry, so the job
+      # cannot pull it without a pull secret. Same secret the deployment uses.
+      imagePullSecrets:
+        - name: nvcr-secret
+
       containers:
         - name: aiperf
           image: nvcr.io/nvstaging/ai-dynamo/aiperf:0.13.0rc2
@@ -80,23 +85,32 @@ spec:
               exec aiperf profile --config /etc/aiperf/perf.yaml
 
           env:
+            # Served model name advertised by the deployment in
+            # vllm/agg-b200-chat/deploy.yaml.
             - name: TARGET_MODEL
-              value: "MODEL_ID"
+              value: "solar-open2-250b"
 
             - name: TOKENIZER
-              value: "MODEL_ID"
+              value: "nota-ai/Solar-Open2-250B-Nota-NVFP4"
 
+            # Frontend service of the aggregated deployment. Must match
+            # metadata.name in deploy.yaml, suffixed with -frontend.
             - name: INFERENCE_URL
-              value: "http://DGD_NAME-frontend:8000/v1/chat/completions"
+              value: "http://solar-open2-250b-vllm-b200-agg-chat-frontend:8000/v1/chat/completions"
 
+            # 15% subset of the nim_turbo 8k/1k 70% KV-reuse chat trace: 1805
+            # requests, mean ISL 37.4k, mean OSL 1008. This is the trace behind
+            # the result published in the recipe README.
             - name: TRACE_FILE
-              value: "/model-cache/traces/64k_400_90kv_agent_new_noschedule_short_15perc.jsonl"
+              value: "/model-cache/traces/nim_turbo_8k_1k_70kv_chat_new_noschedule_short_15perc.jsonl"
 
+            # Concurrency 20 is the operating point the published numbers were
+            # measured at for the 2-replica aggregated topology.
             - name: CONCURRENCY
-              value: "64"
+              value: "20"
 
             - name: MAX_ISL
-              value: "500000"
+              value: "1048576"
 
             - name: CAP_OSL
               value: "12000"
