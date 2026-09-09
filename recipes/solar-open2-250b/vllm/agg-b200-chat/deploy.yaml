@@ -43,6 +43,11 @@ spec:
     minAvailable: 1
     podTemplate:
       spec:
+        # TODO: remove before merge, once the runtime image is published to a
+        # public registry. The image is currently hosted privately, so this
+        # secret is required to pull it.
+        imagePullSecrets:
+        - name: nvcr-secret
         containers:
         - name: main
           image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
@@ -89,6 +94,11 @@ spec:
     sharedMemorySize: 64Gi
     podTemplate:
       spec:
+        # TODO: remove before merge, once the runtime image is published to a
+        # public registry. The image is currently hosted privately, so this
+        # secret is required to pull it.
+        imagePullSecrets:
+        - name: nvcr-secret
         containers:
         - name: main
           image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3

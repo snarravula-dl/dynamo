@@ -66,6 +66,10 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      # TODO: remove before merge, once the AIPerf image is published to a
+      # public registry.
+      imagePullSecrets:
+        - name: nvcr-secret
 
 
       containers:
