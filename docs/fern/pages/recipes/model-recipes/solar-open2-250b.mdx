@@ -9,12 +9,15 @@ title: "Solar Open2 250B"
 | Profile | Serving mode | GPUs | Context |
 |---|---|---:|---|
 | `agg-b200-chat` | Aggregated, two replicas, KV-aware routing | 4 | 1M |
+| `disagg-b200-chat` | Disaggregated 1P:2D, round-robin routing | 8 | 1M |
 
 ## Prerequisites
 
 - Kubernetes cluster with B200 nodes and the Dynamo operator installed
 - A `ReadWriteMany` storage class with at least 300 GB available
 - Registry credentials for the runtime image (`nvcr-secret`)
+- For the disaggregated profile, an RDMA/InfiniBand device plugin exposing
+  `rdma/ib` on the GPU nodes
 
 ## Prepare the model cache
 
@@ -26,17 +29,31 @@ kubectl apply -f recipes/solar-open2-250b/model-cache/model-download.yaml
 kubectl wait --for=condition=complete job/model-download --timeout=2h
 ```
 
-The checkpoint is approximately 153 GB.
+The checkpoint is approximately 153 GB. Both profiles share this cache.
 
 ## Deploy
 
+Aggregated:
+
 ```bash
 kubectl apply -f recipes/solar-open2-250b/vllm/agg-b200-chat/deploy.yaml
-kubectl wait --for=condition=Ready dynamographdeployment/solar-open2-250b-vllm-b200-agg-chat --timeout=30m
+kubectl wait --for=condition=Ready \
+  dynamographdeployment/solar-open2-250b-vllm-b200-agg-chat --timeout=30m
 ```
 
+Disaggregated:
+
+```bash
+kubectl apply -f recipes/solar-open2-250b/vllm/disagg-b200-chat/deploy.yaml
+kubectl wait --for=condition=Ready \
+  dynamographdeployment/solar-open2-250b-disagg-chat --timeout=30m
+```
 
 ## Smoke test
+
+Port-forward the frontend of whichever profile you deployed —
+`solar-open2-250b-vllm-b200-agg-chat-frontend` or
+`solar-open2-250b-disagg-chat-frontend`:
 
 ```bash
 kubectl port-forward svc/solar-open2-250b-vllm-b200-agg-chat-frontend 8000:8000 &
@@ -77,8 +94,7 @@ Pin by digest, not by tag.
   KDA linear-attention layers. The effective KV page is a hybrid page of roughly
   1072 tokens at `--block-size 16`, not the block size itself. Tools that assume
   block size equals page size need adjusting.
-- **Expert parallelism** is left off. It measured as neutral for aggregated
-  serving on this checkpoint, so the simpler configuration is used.
+- Speculative decoding is not supported on this checkpoint and is not enabled.
 
 ### Aggregated profile
 
@@ -86,10 +102,17 @@ Pin by digest, not by tag.
   (`--router-mode kv`, `--router-kv-events`) with a ZMQ KV-event publisher on
   each worker. KV-aware routing outperforms round-robin on prefix-reuse
   workloads.
+- **Expert parallelism is left off.** It measured as neutral for aggregated
+  serving on this checkpoint, so the simpler configuration is used.
 
+### Disaggregated profile
 
 - Separate prefill and decode workers connected by `NixlConnector`, with
-  `kv_role: kv_producer` on prefill and `kv_role: kv_consumer` on decode, each
+  `kv_role: kv_producer` on prefill and `kv_role: kv_consumer` on decode.
+- **The topology is one prefill worker and two decode workers** — TP4 with
+  expert parallelism for prefill (4 GPUs), TP2 for each decode worker (4 GPUs),
+  8 GPUs in total. This is deliberately *not* the rate-matched 1:3 ratio; see
+  the recipe README for the measurements behind the choice.
 - **`VLLM_SSM_CONV_STATE_LAYOUT=DS` is required.** Solar Open2's KDA layers
   register as SSM layers, and their convolution state must cross the KV-transfer
   boundary. Without this variable the engine asserts during initialization and
@@ -103,19 +126,17 @@ Pin by digest, not by tag.
   `UCX_RNDV_SCHEME=get_zcopy` and `UCX_MAX_RNDV_RAILS=4`. `UCX_NET_DEVICES` is
   deliberately left unset; pinning it produced `NIXL_ERR_BACKEND`.
 - **The frontend uses round-robin routing, not KV-aware routing.** This is
-  deliberate. KV-aware routing improves the aggregated profile, but on a
-  local cache to reuse, so routing by prefix overlap only concentrates load and
-  inflates inter-token latency.
-- The topology is one prefill worker (TP4 with expert parallelism, 4 GPUs) and three
-  decode workers (TP2, 6 GPUs), which matches the measured per-worker request rates
-  of each phase.
-- Speculative decoding is not supported on this checkpoint and is not enabled.
+  deliberate. KV-aware routing improves the aggregated profile, but with a single
+  prefill worker there is nothing for a prefix-aware router to choose between.
+  KV-aware and load-aware routing were both measured on this topology and neither
+  improved on round-robin.
 
 ## Known limitations
 
-  throughput of the 4-GPU aggregated profile, while delivering roughly an order of
-  magnitude higher time-to-first-token. Prefer the aggregated profile unless
-  per-user throughput or independent prefill/decode scaling is the priority.
+- The disaggregated profile delivers slightly lower per-GPU throughput than the
+  4-GPU aggregated profile, at roughly an order of magnitude higher
+  time-to-first-token. Prefer the aggregated profile unless independent
+  prefill/decode scaling is the priority.
 - The 1M context length requires sufficient KV capacity; reduce
   `--max-model-len` if deploying on a smaller GPU allocation.
 - Speculative decoding is not available on this checkpoint.
@@ -129,9 +150,14 @@ Pin by digest, not by tag.
 
 Chat workload, 15% subset of the internal `nim_turbo` 8k/1k 70kv trace
 (1805 requests, mean ISL 37.4k tokens, mean OSL 1008 tokens). SLA: p50 TTFT
-below 5 s and p50 user output throughput at or above 49 tok/s.
+below 5 s and p50 user output throughput at or above 50 tok/s.
 
-| Workload | Recipe | Framework | SKU | Concurrency | System output tok/s/GPU | User output tok/s (P50) | TTFT P50 (ms) |
-|---|---|---|---|---:|---:|---:|---:|
-| Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 20 | 214.98 | 52.16 | 319 |
+| Workload | Recipe | Framework | SKU | GPUs | Concurrency | System output tok/s/GPU | User output tok/s (P50) | TTFT P50 (ms) |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 4 | 20 | 214.98 | 52.16 | 319 |
+| Chat (15% subset) | Disaggregated 1P:2D, round-robin | vLLM | B200 | 8 | 44 | 203.96 | 51.71 | 2395 |
 
+Disaggregated figures are the mean of three runs made with the profile's
+`perf.yaml`, which resets the KV cache before profiling so each run starts from a
+cold prefix cache. Benchmarks that do not reset the cache report several percent
+higher throughput and materially lower TTFT.
