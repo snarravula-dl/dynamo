@@ -4,10 +4,12 @@
 apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 metadata:
-  name: solar-open2-250b-disagg-chat
+  name: solar-open2-250b-vllm-b200-disagg-chat
 spec:
   backendFramework: vllm
   env:
+  - name: DYN_ROUTER_MODE
+    value: round_robin
   - name: HF_HOME
     value: /shared-model-cache
   - name: HF_HUB_CACHE
@@ -16,8 +18,6 @@ spec:
     value: '1'
   - name: TRANSFORMERS_OFFLINE
     value: '1'
-  - name: VLLM_CACHE_ROOT
-    value: /tmp/vllm-cache
   - name: VLLM_WORKER_MULTIPROC_METHOD
     value: spawn
   - name: PYTHONHASHSEED
@@ -47,24 +47,17 @@ spec:
   components:
   - name: Frontend
     type: frontend
-    runtimeVersionOverride: 1.4.1
     replicas: 1
     minAvailable: 1
     podTemplate:
       spec:
-        imagePullSecrets: &id001
-        - name: nvcr-secret
-        tolerations: &id002
-        - key: nvidia.com/gpu
-          operator: Equal
-          value: 'true'
-          effect: NoSchedule
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
           command:
           - python3
           - -m
@@ -81,214 +74,149 @@ spec:
           ports:
           - name: http
             containerPort: 8000
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 12
           resources:
             requests:
-              cpu: '2'
-              memory: 8Gi
+              cpu: '16'
+              memory: 128Gi
           volumeMounts:
-          - name: shared-model-cache
-            mountPath: /shared-model-cache
-            readOnly: true
           - name: runtime-tmp
             mountPath: /tmp
         volumes:
-        - name: shared-model-cache
-          persistentVolumeClaim:
-            claimName: shared-model-cache
-            readOnly: true
         - name: runtime-tmp
           emptyDir:
             sizeLimit: 20Gi
-  - name: VllmPrefillWorker
+  - name: PrefillWorker
     type: prefill
-    runtimeVersionOverride: 1.4.1
     replicas: 1
     minAvailable: 1
     sharedMemorySize: 64Gi
     podTemplate:
-      metadata:
-        labels:
-          open2.nvidia.com/disagg-role: prefill
-          open2.nvidia.com/disagg-cell: acc
       spec:
-        imagePullSecrets: *id001
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchExpressions:
-                - key: open2.nvidia.com/disagg-role
-                  operator: In
-                  values:
-                  - decode
-                - key: open2.nvidia.com/disagg-cell
-                  operator: In
-                  values:
-                  - acc
-              topologyKey: kubernetes.io/hostname
-          nodeAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              nodeSelectorTerms:
-              - matchExpressions:
-                - key: kubernetes.io/hostname
-                  operator: NotIn
-                  values: &id003
-                  - cluster-0967a26d-pool-14bee067-prctr-g2j7h
-                  - cluster-0967a26d-pool-14bee067-prctr-9c2x7
-                  - cluster-0967a26d-pool-14bee067-prctr-rxczf
-                - key: nvidia.com/gpu.product
-                  operator: In
-                  values:
-                  - NVIDIA-B200
-        tolerations: *id002
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
             capabilities:
               add:
               - IPC_LOCK
+              - SYS_PTRACE
               - SYS_RESOURCE
           command:
-          - /bin/bash
-          - -lc
+          - python3
+          - -m
+          - dynamo.vllm
           args:
-          - "ulimit -l unlimited\nexec python3 -m dynamo.vllm \\\n  --model=/shared-model-cache/hub/models--nota-ai--Solar-Open2-250B-Nota-NVFP4/snapshots/3cc673335f4c2f41181e05a98fc2b8324d586a64 \\\n  --served-model-name=solar-open2-250b \\\n  --tensor-parallel-size=4 \\\n  --enable-expert-parallel \\\n  --dtype=bfloat16 \\\n  --kv-cache-dtype=fp8 \\\n  --calculate-kv-scales \\\n  --max-model-len=1048576 \\\n  --max-num-seqs=512 \\\n  --max-num-batched-tokens=65536 \\\n  --enable-chunked-prefill \\\n  --no-async-scheduling \\\n  --gpu-memory-utilization=0.90 \\\n  --disable-custom-all-reduce \\\n  --moe-backend=flashinfer_trtllm \\\n  --enable-flashinfer-autotune \\\n  --enable-prefix-caching \\\n  --block-size=16 \\\n  --reasoning-parser=solar_open2 \\\n  --logits-processors=vllm.v1.sample.logits_processor.solar_open2:SolarOpen2TemplateLogitsProcessor \\\n  '--kv-transfer-config={\"kv_connector\": \"NixlConnector\", \"kv_role\": \"kv_producer\", \"kv_connector_extra_config\": {\"num_threads\"\
-            : 8}}' \\\n  --disaggregation-mode=prefill \\\n  '--kv-events-config={\"publisher\": \"zmq\", \"topic\": \"kv-events\", \"endpoint\": \"tcp://*:5571\", \"enable_kv_cache_events\": true}'\n"
-          startupProbe:
-            httpGet:
-              path: /live
-              port: 9090
-            periodSeconds: 30
-            timeoutSeconds: 20
-            failureThreshold: 80
+          - --model=/shared-model-cache/hub/models--nota-ai--Solar-Open2-250B-Nota-NVFP4/snapshots/3cc673335f4c2f41181e05a98fc2b8324d586a64
+          - --served-model-name=solar-open2-250b
+          - --tensor-parallel-size=4
+          - --enable-expert-parallel
+          - --dtype=bfloat16
+          - --kv-cache-dtype=fp8
+          - --calculate-kv-scales
+          - --max-model-len=1048576
+          - --max-num-seqs=512
+          - --max-num-batched-tokens=65536
+          - --enable-chunked-prefill
+          - --no-async-scheduling
+          - --gpu-memory-utilization=0.90
+          - --disable-custom-all-reduce
+          - --moe-backend=flashinfer_trtllm
+          - --enable-flashinfer-autotune
+          - --enable-prefix-caching
+          - --block-size=16
+          - --reasoning-parser=solar_open2
+          - --logits-processors=vllm.v1.sample.logits_processor.solar_open2:SolarOpen2TemplateLogitsProcessor
+          - --kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_producer","kv_connector_extra_config":{"num_threads":8}}
+          - --disaggregation-mode=prefill
+          - --kv-events-config={"publisher":"zmq","topic":"kv-events","endpoint":"tcp://*:5571","enable_kv_cache_events":true}
           resources:
             limits:
               nvidia.com/gpu: '4'
               rdma/ib: '4'
             requests:
               cpu: '16'
-              ephemeral-storage: 20Gi
+              ephemeral-storage: 64Gi
               memory: 640Gi
               nvidia.com/gpu: '4'
               rdma/ib: '4'
           volumeMounts:
           - name: shared-model-cache
             mountPath: /shared-model-cache
-            readOnly: true
           - name: runtime-tmp
             mountPath: /tmp
-          - name: dshm
-            mountPath: /dev/shm
         volumes:
         - name: shared-model-cache
           persistentVolumeClaim:
             claimName: shared-model-cache
-            readOnly: true
         - name: runtime-tmp
           emptyDir:
             sizeLimit: 100Gi
-        - name: dshm
-          emptyDir:
-            medium: Memory
-            sizeLimit: 64Gi
-  - name: VllmDecodeWorker
+  - name: DecodeWorker
     type: decode
-    runtimeVersionOverride: 1.4.1
     replicas: 2
     minAvailable: 2
     sharedMemorySize: 64Gi
     podTemplate:
-      metadata:
-        labels:
-          open2.nvidia.com/disagg-role: decode
-          open2.nvidia.com/disagg-cell: acc
       spec:
-        imagePullSecrets: *id001
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchExpressions:
-                - key: open2.nvidia.com/disagg-role
-                  operator: In
-                  values:
-                  - prefill
-                - key: open2.nvidia.com/disagg-cell
-                  operator: In
-                  values:
-                  - acc
-              topologyKey: kubernetes.io/hostname
-          nodeAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              nodeSelectorTerms:
-              - matchExpressions:
-                - key: kubernetes.io/hostname
-                  operator: NotIn
-                  values: *id003
-                - key: nvidia.com/gpu.product
-                  operator: In
-                  values:
-                  - NVIDIA-B200
-        tolerations: *id002
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
             capabilities:
               add:
               - IPC_LOCK
+              - SYS_PTRACE
               - SYS_RESOURCE
           command:
-          - /bin/bash
-          - -lc
+          - python3
+          - -m
+          - dynamo.vllm
           args:
-          - "ulimit -l unlimited\nexec python3 -m dynamo.vllm \\\n  --model=/shared-model-cache/hub/models--nota-ai--Solar-Open2-250B-Nota-NVFP4/snapshots/3cc673335f4c2f41181e05a98fc2b8324d586a64 \\\n  --served-model-name=solar-open2-250b \\\n  --tensor-parallel-size=2 \\\n  --dtype=bfloat16 \\\n  --kv-cache-dtype=fp8 \\\n  --calculate-kv-scales \\\n  --max-model-len=1048576 \\\n  --max-num-seqs=512 \\\n  --max-num-batched-tokens=65536 \\\n  --enable-chunked-prefill \\\n  --gpu-memory-utilization=0.90 \\\n  --disable-custom-all-reduce \\\n  --moe-backend=flashinfer_trtllm \\\n  --enable-flashinfer-autotune \\\n  --enable-prefix-caching \\\n  --block-size=16 \\\n  --reasoning-parser=solar_open2 \\\n  --logits-processors=vllm.v1.sample.logits_processor.solar_open2:SolarOpen2TemplateLogitsProcessor \\\n  '--kv-transfer-config={\"kv_connector\": \"NixlConnector\", \"kv_role\": \"kv_consumer\", \"kv_connector_extra_config\": {\"num_threads\": 8}}' \\\n  --disaggregation-mode=decode\n"
-          startupProbe:
-            httpGet:
-              path: /live
-              port: 9090
-            periodSeconds: 30
-            timeoutSeconds: 20
-            failureThreshold: 80
+          - --model=/shared-model-cache/hub/models--nota-ai--Solar-Open2-250B-Nota-NVFP4/snapshots/3cc673335f4c2f41181e05a98fc2b8324d586a64
+          - --served-model-name=solar-open2-250b
+          - --tensor-parallel-size=2
+          - --dtype=bfloat16
+          - --kv-cache-dtype=fp8
+          - --calculate-kv-scales
+          - --max-model-len=1048576
+          - --max-num-seqs=512
+          - --max-num-batched-tokens=65536
+          - --enable-chunked-prefill
+          - --gpu-memory-utilization=0.90
+          - --disable-custom-all-reduce
+          - --moe-backend=flashinfer_trtllm
+          - --enable-flashinfer-autotune
+          - --enable-prefix-caching
+          - --block-size=16
+          - --reasoning-parser=solar_open2
+          - --logits-processors=vllm.v1.sample.logits_processor.solar_open2:SolarOpen2TemplateLogitsProcessor
+          - --kv-transfer-config={"kv_connector":"NixlConnector","kv_role":"kv_consumer","kv_connector_extra_config":{"num_threads":8}}
+          - --disaggregation-mode=decode
           resources:
             limits:
               nvidia.com/gpu: '2'
               rdma/ib: '2'
             requests:
               cpu: '16'
-              ephemeral-storage: 20Gi
+              ephemeral-storage: 64Gi
               memory: 320Gi
               nvidia.com/gpu: '2'
               rdma/ib: '2'
           volumeMounts:
           - name: shared-model-cache
             mountPath: /shared-model-cache
-            readOnly: true
           - name: runtime-tmp
             mountPath: /tmp
-          - name: dshm
-            mountPath: /dev/shm
         volumes:
         - name: shared-model-cache
           persistentVolumeClaim:
             claimName: shared-model-cache
-            readOnly: true
         - name: runtime-tmp
           emptyDir:
             sizeLimit: 100Gi
-        - name: dshm
-          emptyDir:
-            medium: Memory
-            sizeLimit: 64Gi

@@ -67,10 +67,6 @@ spec:
     spec:
       restartPolicy: Never
 
-      # The AIPerf image lives in the private nvstaging registry, so the job
-      # cannot pull it without a pull secret. Same secret the deployment uses.
-      imagePullSecrets:
-        - name: nvcr-secret
 
       containers:
         - name: aiperf
@@ -96,7 +92,7 @@ spec:
             # Frontend service of the aggregated deployment. Must match
             # metadata.name in deploy.yaml, suffixed with -frontend.
             - name: INFERENCE_URL
-              value: "http://solar-open2-250b-disagg-chat-frontend:8000/v1/chat/completions"
+              value: "http://solar-open2-250b-vllm-b200-disagg-chat-frontend:8000/v1/chat/completions"
 
             # 15% subset of the nim_turbo 8k/1k 70% KV-reuse chat trace: 1805
             # requests, mean ISL 37.4k, mean OSL 1008. This is the trace behind

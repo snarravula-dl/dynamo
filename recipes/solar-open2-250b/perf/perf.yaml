@@ -67,10 +67,6 @@ spec:
     spec:
       restartPolicy: Never
 
-      # The AIPerf image lives in the private nvstaging registry, so the job
-      # cannot pull it without a pull secret. Same secret the deployment uses.
-      imagePullSecrets:
-        - name: nvcr-secret
 
       containers:
         - name: aiperf

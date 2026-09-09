@@ -38,31 +38,18 @@ spec:
     value: mnnvl
   components:
   - name: Frontend
-    # Required by the operator: the container is referenced by digest and so has
-    # no parseable semantic-version tag. Publishing the image with a semver tag
-    # would allow this field to be removed.
-    runtimeVersionOverride: 1.4.1
     type: frontend
     replicas: 1
     minAvailable: 1
     podTemplate:
       spec:
-        imagePullSecrets:
-        - name: nvcr-secret
-        # B200 GPU nodes carry the taint nvidia.com/gpu=true:NoSchedule. Without a
-        # matching toleration the pods never schedule and the DynamoGraphDeployment
-        # reports insufficient_capacity even when GPUs are free.
-        tolerations:
-        - key: nvidia.com/gpu
-          operator: Equal
-          value: 'true'
-          effect: NoSchedule
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
           command:
           - python3
           - -m
@@ -84,13 +71,6 @@ spec:
           ports:
           - name: http
             containerPort: 8000
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 12
           resources:
             requests:
               cpu: '16'
@@ -103,34 +83,19 @@ spec:
           emptyDir:
             sizeLimit: 20Gi
   - name: Worker
-    # Required by the operator: the container is referenced by digest and so has
-    # no parseable semantic-version tag. Publishing the image with a semver tag
-    # would allow this field to be removed.
-    runtimeVersionOverride: 1.4.1
     type: worker
     replicas: 2
     minAvailable: 2
     sharedMemorySize: 64Gi
     podTemplate:
-      metadata:
-        labels: null
       spec:
-        imagePullSecrets:
-        - name: nvcr-secret
-        # B200 GPU nodes carry the taint nvidia.com/gpu=true:NoSchedule. Without a
-        # matching toleration the pods never schedule and the DynamoGraphDeployment
-        # reports insufficient_capacity even when GPUs are free.
-        tolerations:
-        - key: nvidia.com/gpu
-          operator: Equal
-          value: 'true'
-          effect: NoSchedule
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
             capabilities:
               add:
               - IPC_LOCK
@@ -173,18 +138,6 @@ spec:
             mountPath: /shared-model-cache
           - name: runtime-tmp
             mountPath: /tmp
-            # Engine initialisation (profile, KV cache, warmup) takes several minutes
-            # on top of weight load for this 250B checkpoint. Without this probe the
-            # pod reports Ready before the engine can serve and requests fail with
-            # HTTP 503. The frontend deliberately has no startupProbe: it does not
-            # serve /live on 9090.
-          startupProbe:
-            httpGet:
-              path: /live
-              port: 9090
-            periodSeconds: 30
-            timeoutSeconds: 20
-            failureThreshold: 80
         volumes:
         - name: shared-model-cache
           persistentVolumeClaim:

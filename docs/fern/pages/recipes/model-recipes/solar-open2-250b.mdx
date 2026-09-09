@@ -46,14 +46,14 @@ Disaggregated:
 ```bash
 kubectl apply -f recipes/solar-open2-250b/vllm/disagg-b200-chat/deploy.yaml
 kubectl wait --for=condition=Ready \
-  dynamographdeployment/solar-open2-250b-disagg-chat --timeout=30m
+  dynamographdeployment/solar-open2-250b-vllm-b200-disagg-chat --timeout=30m
 ```
 
 ## Smoke test
 
 Port-forward the frontend of whichever profile you deployed —
 `solar-open2-250b-vllm-b200-agg-chat-frontend` or
-`solar-open2-250b-disagg-chat-frontend`:
+`solar-open2-250b-vllm-b200-disagg-chat-frontend`:
 
 ```bash
 kubectl port-forward svc/solar-open2-250b-vllm-b200-agg-chat-frontend 8000:8000 &
@@ -82,9 +82,10 @@ Pin by digest, not by tag.
 
 ### Both profiles
 
-- **NVFP4 weights, FP8 KV cache.** Both manifests set `--kv-cache-dtype fp8`
-  with `--calculate-kv-scales`. FP8 halves KV bytes relative to BF16, which
-  roughly doubles the KV pool and raises the realised prefix-cache hit rate.
+- **NVFP4 weights, FP8 KV cache.** Both manifests set `--kv-cache-dtype fp8`;
+  the disaggregated profile additionally sets `--calculate-kv-scales`. FP8 halves
+  KV bytes relative to BF16, which roughly doubles the KV pool and raises the
+  realised prefix-cache hit rate.
 - **MoE backend.** `--moe-backend flashinfer_trtllm` with
   `--enable-flashinfer-autotune`.
 - **Attention.** FlashInfer is selected automatically. Note that FlashAttention
@@ -152,10 +153,10 @@ Chat workload, 15% subset of the internal `nim_turbo` 8k/1k 70kv trace
 (1805 requests, mean ISL 37.4k tokens, mean OSL 1008 tokens). SLA: p50 TTFT
 below 5 s and p50 user output throughput at or above 50 tok/s.
 
-| Workload | Recipe | Framework | SKU | GPUs | Concurrency | System output tok/s/GPU | User output tok/s (P50) | TTFT P50 (ms) |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 4 | 20 | 214.98 | 52.16 | 319 |
-| Chat (15% subset) | Disaggregated 1P:2D, round-robin | vLLM | B200 | 8 | 44 | 203.96 | 51.71 | 2395 |
+| Workload | Recipe | Framework | SKU | Concurrency | System output tok/s/GPU | User output tok/s (P50) | TTFT P50 (ms) |
+|---|---|---|---|---:|---:|---:|---:|
+| Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 20 | 213.46 | 52.68 | 334 |
+| Chat (15% subset) | Disaggregated 1P:2D, round-robin | vLLM | B200 | 44 | 204.62 | 51.36 | 2298 |
 
 Disaggregated figures are the mean of three runs made with the profile's
 `perf.yaml`, which resets the KV cache before profiling so each run starts from a
