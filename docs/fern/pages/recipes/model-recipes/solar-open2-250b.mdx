@@ -107,10 +107,9 @@ kubectl apply -f recipes/solar-open2-250b/perf/perf.yaml          # aggregated
 kubectl apply -f recipes/solar-open2-250b/perf/perf-disagg.yaml   # disaggregated
 ```
 
-Each Job runs the trace once and writes its summary to `ARTIFACT_DIR`. To repeat a
-run, delete the Job and re-apply it; Jobs are immutable, so re-applying without
-deleting fails. Results vary run to run by roughly one to two percent, so repeat a
-measurement before treating a difference as real.
+Each Job runs the trace once and writes its summary to `ARTIFACT_DIR`. To run it
+again, delete the Job first and re-apply; Jobs are immutable, so re-applying over an
+existing one fails.
 
 ## Runtime image
 
