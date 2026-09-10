@@ -170,9 +170,9 @@ Pin by digest, not by tag.
 - Transport is configured with `NCCL_IB_DISABLE=0`, `UCX_TLS=^cuda_ipc`,
   `UCX_RNDV_SCHEME=get_zcopy` and `UCX_MAX_RNDV_RAILS=4`. `UCX_NET_DEVICES` is
   deliberately left unset; pinning it produced `NIXL_ERR_BACKEND`.
-- **Per-user output throughput runs close to the floor.** The disaggregated figures
-  are the mean of two runs measuring 52.60 and 50.78 tok/s/user against a 50 tok/s
-  target. Individual runs on contended hardware may land at or below the floor.
+- **Per-user output throughput runs close to the floor.** The disaggregated profile
+  clears the 50 tok/s target with little margin, and individual runs on contended
+  hardware may land at or below it.
 - **The frontend uses round-robin routing, not KV-aware routing.** This is
   deliberate. KV-aware routing improves the aggregated profile, but with a single
   prefill worker there is nothing for a prefix-aware router to choose between.
@@ -230,7 +230,6 @@ below 5 s and p50 user output throughput at or above 50 tok/s.
 | Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 20 | 216.88 | 52.02 | 308 |
 | Chat (15% subset) | Disaggregated 1P:2D, round-robin | vLLM | B200 | 44 | 206.20 | 51.69 | 2277 |
 
-Disaggregated figures are the mean of two runs made with the profile's `perf.yaml`.
-That configuration isolates the warmup phase from profiling; it does not clear
-server-side KV cache. For runs that must start from a cold cache, restart the worker
-pods between them.
+Figures are measured with the profile's `perf.yaml`. That configuration isolates the
+warmup phase from profiling; it does not clear server-side KV cache. For runs that
+must start from a cold cache, restart the worker pods between them.
