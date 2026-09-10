@@ -127,7 +127,7 @@ Pin by digest, not by tag.
   `UCX_RNDV_SCHEME=get_zcopy` and `UCX_MAX_RNDV_RAILS=4`. `UCX_NET_DEVICES` is
   deliberately left unset; pinning it produced `NIXL_ERR_BACKEND`.
 - **Per-user output throughput runs close to the floor.** The disaggregated figures
-  are the mean of two runs measuring 51.11 and 50.68 tok/s/user against a 50 tok/s
+  are the mean of two runs measuring 52.60 and 50.78 tok/s/user against a 50 tok/s
   target. Individual runs on contended hardware may land at or below the floor.
 - **The frontend uses round-robin routing, not KV-aware routing.** This is
   deliberate. KV-aware routing improves the aggregated profile, but with a single
@@ -179,8 +179,8 @@ below 5 s and p50 user output throughput at or above 50 tok/s.
 
 | Workload | Recipe | Framework | SKU | Concurrency | System output tok/s/GPU | User output tok/s (P50) | TTFT P50 (ms) |
 |---|---|---|---|---:|---:|---:|---:|
-| Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 20 | 213.46 | 52.68 | 334 |
-| Chat (15% subset) | Disaggregated 1P:2D, round-robin | vLLM | B200 | 44 | 206.53 | 50.90 | 2086 |
+| Chat (15% subset) | Aggregated, 2 replicas, KV-aware routing | vLLM | B200 | 20 | 216.88 | 52.02 | 308 |
+| Chat (15% subset) | Disaggregated 1P:2D, round-robin | vLLM | B200 | 44 | 206.20 | 51.69 | 2277 |
 
 Disaggregated figures are the mean of three runs made with the profile's
 `perf.yaml`, which resets the KV cache before profiling so each run starts from a
