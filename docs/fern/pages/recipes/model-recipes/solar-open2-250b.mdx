@@ -145,6 +145,27 @@ Pin by digest, not by tag.
   `--max-model-len` if deploying on a smaller GPU allocation.
 - Speculative decoding is not available on this checkpoint.
 
+### API compatibility
+
+Several OpenAI-compatible surfaces do not behave as advertised. These originate in
+the Dynamo frontend, are not specific to this model, and no recipe setting affects
+them. Tracked as NVBug 6481604.
+
+- **Forced tool choice.** `tool_choice=required` and named tool selection return the
+  tool JSON in `message.content` with `finish_reason=stop`, instead of
+  `message.tool_calls` with `finish_reason=tool_calls`. `tool_choice=auto` works.
+- **Structured output.** `response_format=json_object` does not reliably place the
+  final JSON in `message.content`; it may arrive in `reasoning_content`.
+- **Logprobs.** Requesting `logprobs` on `/v1/chat/completions` returns HTTP 500.
+- **Responses API.** `store=true` succeeds but the response is not retrievable
+  afterwards (`GET /v1/responses/{id}` returns 404). Unsupported parameters such as
+  `frequency_penalty` are accepted and silently ignored.
+- **Completions.** `stop_token_ids` with more than three IDs returns HTTP 500 rather
+  than a 400.
+
+Agentic and structured-output workloads should be validated against these before
+deployment.
+
 ## Source
 
 - Manifests: `recipes/solar-open2-250b/`
