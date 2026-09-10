@@ -147,15 +147,10 @@ Pin by digest, not by tag.
 
 ### API compatibility
 
-Several OpenAI-compatible surfaces do not behave as advertised. These originate in
-the Dynamo frontend, are not specific to this model, and no recipe setting affects
-them. Tracked as NVBug 6481604.
+Some OpenAI-compatible surfaces do not behave as advertised. These originate in the
+Dynamo frontend, are not specific to this model, and no recipe setting affects them.
+Tracked as NVBug 6481604.
 
-- **Forced tool choice.** `tool_choice=required` and named tool selection return the
-  tool JSON in `message.content` with `finish_reason=stop`, instead of
-  `message.tool_calls` with `finish_reason=tool_calls`. `tool_choice=auto` works.
-- **Structured output.** `response_format=json_object` does not reliably place the
-  final JSON in `message.content`; it may arrive in `reasoning_content`.
 - **Logprobs.** Requesting `logprobs` on `/v1/chat/completions` returns HTTP 500.
 - **Responses API.** `store=true` succeeds but the response is not retrievable
   afterwards (`GET /v1/responses/{id}` returns 404). Unsupported parameters such as
@@ -163,8 +158,17 @@ them. Tracked as NVBug 6481604.
 - **Completions.** `stop_token_ids` with more than three IDs returns HTTP 500 rather
   than a 400.
 
-Agentic and structured-output workloads should be validated against these before
-deployment.
+### Reasoning budget and structured output
+
+The recipe sets `reasoning_effort: high`. Generations are long: on GPQA Diamond the
+median output is roughly 6,400 tokens, the 99th percentile 131,000, and the longest
+observed 209,000. A small `max_tokens` therefore truncates the model mid-reasoning
+and returns `finish_reason=length` with no final content, which shows up most often
+on structured-output requests where the JSON never arrives in `message.content`.
+
+Omit `max_tokens` and let the 1M context window bound the request, or set it well
+above the reasoning length the workload needs. Values in the low thousands are not
+sufficient for this model.
 
 ## Source
 
