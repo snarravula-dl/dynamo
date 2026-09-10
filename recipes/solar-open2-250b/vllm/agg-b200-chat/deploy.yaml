@@ -59,7 +59,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2-toolfix-preview1@sha256:deea685b67f14e7fb8be7a7c07d634337bf0dfa39adb0aca40731587a5c6bfff
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
@@ -119,7 +119,7 @@ spec:
           effect: NoSchedule
         containers:
         - name: main
-          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2@sha256:c180f09606e3615206d8db4f0323e63ed23067c19091d3194ad7277cd3873cf3
+          image: nvcr.io/nvstaging/nim/snarravula:1.4.1-solar-open2-toolfix-preview1@sha256:deea685b67f14e7fb8be7a7c07d634337bf0dfa39adb0aca40731587a5c6bfff
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0
