@@ -100,7 +100,7 @@ spec:
 
             # 15% subset of the nim_turbo 8k/1k 70% KV-reuse chat trace: 1805
             # requests, mean ISL 37.4k, mean OSL 1008. This is the trace behind
-            # the result published in the recipe README.
+            # the published result for this profile.
             - name: TRACE_FILE
               value: "/model-cache/traces/nim_turbo_8k_1k_70kv_chat_new_noschedule_short_15perc.jsonl"
 
